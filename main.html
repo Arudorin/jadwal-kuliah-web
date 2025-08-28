@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jadwal Kuliah Interaktif</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: Aplikasi ini menggunakan struktur dashboard dengan tiga komponen utama: (1) Kontrol Filter Hari untuk navigasi yang mudah, (2) Ringkasan Statistik untuk gambaran umum cepat, dan (3) Tampilan Jadwal Mingguan bergaya kalender. Struktur ini dipilih karena sangat intuitif untuk data jadwal, memungkinkan pengguna memindai seluruh minggu atau fokus pada satu hari dengan mudah. Alur pengguna dimulai dari gambaran umum (statistik), lalu ke tampilan detail (kalender), dengan kemampuan untuk menyaring tampilan tersebut. -->
+    <!-- Visualization & Content Choices: Jadwal -> Goal: Mengatur & Menginformasikan -> Viz: Grid Kalender Interaktif (HTML/Tailwind) -> Interaction: Filter per hari untuk menampilkan/menyembunyikan jadwal. Justification: Memberikan visualisasi yang jelas dan familiar tentang komitmen waktu. | Jumlah kelas per hari -> Goal: Membandingkan -> Viz: Bar Chart (Chart.js) -> Interaction: Statis, tooltip saat hover. Justification: Cara efektif untuk membandingkan beban kerja harian secara visual. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FDFBF8;
+            color: #4A4A4A;
+        }
+        .timetable-grid {
+            display: grid;
+            grid-template-columns: 60px repeat(4, 1fr);
+            grid-template-rows: 40px repeat(22, 30px);
+            gap: 2px;
+            background-color: #F3F4F6;
+        }
+        .time-label, .day-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #6B7280;
+            background-color: #FFFFFF;
+            border-radius: 4px;
+        }
+        .course-card {
+            position: absolute;
+            width: calc(100% - 4px);
+            left: 2px;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 0.8rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            border-left-width: 4px;
+        }
+        .current-time-indicator {
+            position: absolute;
+            width: calc(100% - 60px);
+            left: 60px;
+            height: 2px;
+            background-color: #EF4444;
+            z-index: 10;
+        }
+        .current-time-indicator::before {
+            content: '';
+            position: absolute;
+            left: -5px;
+            top: -4px;
+            width: 10px;
+            height: 10px;
+            background-color: #EF4444;
+            border-radius: 50%;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 40vh;
+        }
+        .filter-btn.active {
+            background-color: #4F46E5;
+            color: #FFFFFF;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Jadwal Kuliah Interaktif</h1>
+            <p class="mt-2 text-gray-600">Semester Ganjil 2025</p>
+        </header>
+
+        <main>
+            <section id="controls" class="mb-8 p-4 bg-white rounded-lg shadow-sm">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700">Filter Jadwal</h2>
+                <div class="flex flex-wrap gap-2 justify-center">
+                    <button data-day="all" class="filter-btn active px-4 py-2 text-sm font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Semua Hari</button>
+                    <button data-day="Senin" class="filter-btn px-4 py-2 text-sm font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Senin</button>
+                    <button data-day="Selasa" class="filter-btn px-4 py-2 text-sm font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Selasa</button>
+                    <button data-day="Rabu" class="filter-btn px-4 py-2 text-sm font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Rabu</button>
+                    <button data-day="Kamis" class="filter-btn px-4 py-2 text-sm font-medium bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">Kamis</button>
+                </div>
+            </section>
+            
+            <section id="summary" class="mb-8">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700 text-center">Ringkasan Jadwal</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div class="bg-white p-6 rounded-lg shadow-sm">
+                        <h3 class="text-3xl font-bold text-indigo-600" id="total-courses">0</h3>
+                        <p class="text-gray-500 mt-1">Total Mata Kuliah</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-sm">
+                        <h3 class="text-3xl font-bold text-indigo-600" id="total-sks">0</h3>
+                        <p class="text-gray-500 mt-1">Estimasi SKS</p>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow-sm">
+                        <h3 class="text-3xl font-bold text-indigo-600" id="busiest-day">-</h3>
+                        <p class="text-gray-500 mt-1">Hari Tersibuk</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="chart" class="mb-8 bg-white p-4 rounded-lg shadow-sm">
+                 <h2 class="text-xl font-semibold mb-4 text-gray-700 text-center">Distribusi Mata Kuliah per Hari</h2>
+                 <p class="text-center text-gray-500 mb-4 text-sm">Visualisasi ini menunjukkan jumlah mata kuliah yang dijadwalkan setiap hari, membantu Anda mengidentifikasi hari-hari dengan beban studi terberat.</p>
+                <div class="chart-container">
+                    <canvas id="dailyCoursesChart"></canvas>
+                </div>
+            </section>
+
+            <section id="timetable-section" class="bg-white p-4 rounded-lg shadow-sm overflow-x-auto">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Tampilan Jadwal Mingguan</h2>
+                <p class="text-gray-500 mb-4 text-sm">Berikut adalah jadwal lengkap Anda dalam format kalender. Setiap blok mewakili satu mata kuliah. Anda dapat menggunakan filter di atas untuk fokus pada hari tertentu.</p>
+                <div id="timetable-container" class="relative">
+                    <div class="timetable-grid" id="timetable-grid">
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+<script>
+    const scheduleData = [
+        { day: 'Kamis', start: '07:00', end: '09:30', name: 'Pemrograman Internet B', lecturer: 'Ariyan Zubaidi, S.Kom., M.T (B)', room: 'D2.01 (48)', color: 'bg-sky-100', border: 'border-sky-500' },
+        { day: 'Selasa', start: '09:30', end: '11:10', name: 'Jaringan Syaraf Tiruan B', lecturer: 'Prof. Dr. Eng. I Gede Pasek Suta Wijaya, S.T., M.T. (B)', room: 'D2.01 (48)', color: 'bg-amber-100', border: 'border-amber-500' },
+        { day: 'Senin', start: '12:50', end: '15:20', name: 'Proyek Perangkat Lunak B', lecturer: 'Santi Ika Murpratiwi, S.Kom., M.T. (B)', room: 'D2.02 (48)', color: 'bg-emerald-100', border: 'border-emerald-500' },
+        { day: 'Senin', start: '16:10', end: '17:40', name: 'Linux System Administrator', lecturer: 'Ahmad Zafrullah M., S.T., M.Eng. (MKP)', room: 'D2.02 (48)', color: 'bg-rose-100', border: 'border-rose-500' },
+        { day: 'Kamis', start: '12:50', end: '15:20', name: 'Blockchain', lecturer: 'Heri Wijayanto, S.T., M.T., Ph.D. (MKP)', room: 'A3.01 (36)', color: 'bg-fuchsia-100', border: 'border-fuchsia-500' },
+        { day: 'Rabu', start: '14:30', end: '16:10', name: 'Mobile Security', lecturer: 'Raphael Blanco Huwae, S.T., M.T. (MKP)', room: 'D3.03 (40)', color: 'bg-violet-100', border: 'border-violet-500' },
+        { day: 'Kamis', start: '14:30', end: '16:10', name: 'Software Quality Assurance', lecturer: 'Ida Bagus Ketut Widiartha, S.T., M.T., Ph.D. (MKP)', room: 'D2.01 (48)', color: 'bg-teal-100', border: 'border-teal-500' },
+        { day: 'Rabu', start: '16:10', end: '17:40', name: 'Mobile Ad Hoc Network', lecturer: 'Andy Hidayat Jatmika, S.T., M.Kom. (MKP)', room: 'D2.01 (48)', color: 'bg-orange-100', border: 'border-orange-500' },
+    ];
+
+    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis'];
+    const timeStart = 7;
+    const timeEnd = 18;
+
+    function timeToMinutes(time) {
+        const [hours, minutes] = time.split(':').map(Number);
+        return hours * 60 + minutes;
+    }
+
+    function generateTimetable() {
+        const grid = document.getElementById('timetable-grid');
+        grid.innerHTML = '';
+
+        grid.appendChild(document.createElement('div'));
+        days.forEach(day => {
+            const dayLabel = document.createElement('div');
+            dayLabel.className = 'day-label';
+            dayLabel.textContent = day;
+            grid.appendChild(dayLabel);
+        });
+
+        for (let hour = timeStart; hour < timeEnd; hour++) {
+            for (let minute = 0; minute < 60; minute += 30) {
+                if (minute === 0) {
+                    const timeLabel = document.createElement('div');
+                    timeLabel.className = 'time-label';
+                    timeLabel.style.gridRow = `${(hour - timeStart) * 2 + 2}`;
+                    timeLabel.style.gridRowEnd = `${(hour - timeStart) * 2 + 4}`;
+                    timeLabel.textContent = `${String(hour).padStart(2, '0')}:00`;
+                    grid.appendChild(timeLabel);
+                }
+                const cell = document.createElement('div');
+                cell.style.gridRow = `${(hour - timeStart) * 2 + (minute / 30) + 2}`;
+                cell.style.gridColumn = '2 / -1';
+                cell.className = 'bg-gray-50 border-t border-gray-200';
+                grid.appendChild(cell);
+            }
+        }
+        
+        const container = document.getElementById('timetable-container');
+        scheduleData.forEach(course => {
+            const dayIndex = days.indexOf(course.day);
+            if (dayIndex === -1) return;
+
+            const startMinutes = timeToMinutes(course.start);
+            const endMinutes = timeToMinutes(course.end);
+
+            const startRow = Math.floor((startMinutes - timeStart * 60) / 30) + 2;
+            const endRow = Math.ceil((endMinutes - timeStart * 60) / 30) + 2;
+            const duration = endRow - startRow;
+
+            const card = document.createElement('div');
+            card.className = `course-card ${course.color} ${course.border}`;
+            card.dataset.day = course.day;
+            card.style.gridColumn = `${dayIndex + 2}`;
+            card.style.top = `${(startRow - 2) * 30 + (startRow - 2) * 2}px`;
+            card.style.height = `${duration * 30 + (duration - 1) * 2}px`;
+
+            card.innerHTML = `
+                <p class="font-semibold text-gray-800">${course.name}</p>
+                <p class="text-xs text-gray-600 mt-1">${course.lecturer}</p>
+                <p class="text-xs text-gray-500 mt-1">${course.start} - ${course.end}</p>
+                <p class="text-xs font-medium text-gray-700 mt-2">📍 ${course.room}</p>
+            `;
+            container.appendChild(card);
+        });
+    }
+    
+    function updateCurrentTimeIndicator() {
+        const indicator = document.querySelector('.current-time-indicator');
+        if (indicator) indicator.remove();
+        
+        const now = new Date();
+        const currentDayIndex = now.getDay() - 1;
+        if (currentDayIndex < 0 || currentDayIndex >= days.length) return;
+
+        const currentDay = days[currentDayIndex];
+        const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
+        
+        if (currentTimeInMinutes >= timeStart * 60 && currentTimeInMinutes <= timeEnd * 60) {
+            const topPosition = ((currentTimeInMinutes - timeStart * 60) / 30) * 32;
+            
+            const newIndicator = document.createElement('div');
+            newIndicator.className = 'current-time-indicator';
+            newIndicator.style.top = `${topPosition}px`;
+            
+            document.getElementById('timetable-container').appendChild(newIndicator);
+        }
+    }
+
+    function setupFilters() {
+        const filterButtons = document.querySelectorAll('.filter-btn');
+        filterButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                const day = button.dataset.day;
+                
+                filterButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+
+                const courseCards = document.querySelectorAll('.course-card');
+                courseCards.forEach(card => {
+                    if (day === 'all' || card.dataset.day === day) {
+                        card.style.opacity = '1';
+                        card.style.visibility = 'visible';
+                    } else {
+                        card.style.opacity = '0';
+                        card.style.visibility = 'hidden';
+                    }
+                });
+            });
+        });
+    }
+    
+    function calculateSKS(start, end) {
+        const startMinutes = timeToMinutes(start);
+        const endMinutes = timeToMinutes(end);
+        const durationMinutes = endMinutes - startMinutes;
+        return Math.round(durationMinutes / 50);
+    }
+
+    function updateSummary() {
+        document.getElementById('total-courses').textContent = scheduleData.length;
+
+        const totalSKS = scheduleData.reduce((acc, course) => acc + calculateSKS(course.start, course.end), 0);
+        document.getElementById('total-sks').textContent = totalSKS;
+
+        const coursesPerDay = scheduleData.reduce((acc, course) => {
+            acc[course.day] = (acc[course.day] || 0) + 1;
+            return acc;
+        }, {});
+        
+        const busiestDay = Object.keys(coursesPerDay).reduce((a, b) => coursesPerDay[a] > coursesPerDay[b] ? a : b, '-');
+        document.getElementById('busiest-day').textContent = busiestDay;
+    }
+
+    function createDailyChart() {
+        const ctx = document.getElementById('dailyCoursesChart').getContext('2d');
+        const coursesPerDay = days.map(day => {
+            return scheduleData.filter(course => course.day === day).length;
+        });
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'Jumlah Mata Kuliah',
+                    data: coursesPerDay,
+                    backgroundColor: 'rgba(79, 70, 229, 0.6)',
+                    borderColor: 'rgba(79, 70, 229, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y + ' MK';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        generateTimetable();
+        updateCurrentTimeIndicator();
+        setInterval(updateCurrentTimeIndicator, 60000);
+        setupFilters();
+        updateSummary();
+        createDailyChart();
+    });
+</script>
+</body>
+</html>
